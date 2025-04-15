@@ -1,0 +1,307 @@
+features:
+  - name: purchase_count_restore
+    calculate_query: |
+      WITH purchase AS (
+          SELECT DISTINCT
+                 customer_mindbox_id,
+                 action_mindbox_id,
+                 order_mindbox_id,
+                 CAST(first_action_datetime AS DATE) AS first_action_datetime,
+                 total_price,
+                 shop
+          FROM dbo_mb.orders o
+          WHERE brand = 'reStore' 
+              AND NOT EXISTS (
+                  SELECT 1 
+                  FROM dbo_mb.orders_cancelled c 
+                  WHERE c.order_mindbox_id = o.order_mindbox_id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 
+                  FROM dbo_mb.orders_return r 
+                  WHERE r.order_mindbox_id = o.order_mindbox_id
+              )
+      )
+      SELECT 
+          p.customer_mindbox_id,
+          CAST(COUNT(order_mindbox_id) AS BIGINT) AS purchase_count_restore
+      FROM purchase p
+      WHERE p.customer_mindbox_id IN ({values})
+      GROUP BY p.customer_mindbox_id
+    batch_size: 1000
+
+  - name: purchase_sum_restore
+    calculate_query: |
+      WITH purchase AS (
+                SELECT DISTINCT
+                       customer_mindbox_id,
+                       action_mindbox_id,
+                       order_mindbox_id,
+                       CAST(first_action_datetime AS DATE) AS first_action_datetime,
+                       total_price,
+                       shop
+                FROM dbo_mb.orders o
+                WHERE brand = 'reStore' 
+                    AND NOT EXISTS (
+                        SELECT 1 
+                        FROM dbo_mb.orders_cancelled c 
+                        WHERE c.order_mindbox_id = o.order_mindbox_id
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 
+                        FROM dbo_mb.orders_return r 
+                        WHERE r.order_mindbox_id = o.order_mindbox_id
+                    )
+            )
+            SELECT 
+                p.customer_mindbox_id,
+                CAST(SUM(total_price) AS BIGINT) AS purchase_sum_restore
+            FROM purchase p
+            WHERE p.customer_mindbox_id IN ({values})
+            GROUP BY p.customer_mindbox_id
+    batch_size: 1000
+  - name: bonuses_spisanie
+    calculate_query: |
+      WITH bonuses AS (
+            SELECT DISTINCT 
+                customer_mindbox_id,
+                customer_action_id,
+                ABS(bonus_amount) AS bonus_amount,
+                shop,
+                FORMAT(change_datatime, 'dd.MM.yyyy') as change_datatime,
+                CASE 
+                    WHEN bonus_amount > 0 THEN 1
+                    WHEN bonus_amount < 0 THEN 0
+                END AS nachislenie,
+                CASE when shop like '%RSTR%' or shop like '%Re:Store - интеграция с RetailCRM%' or shop like '%re-store%' then 'reStore'
+                    when shop like '%SMSG%' or shop like '%Samsung - интеграция с RetailCRM%' or shop like '%galaxy%' then 'samsung'
+                    when shop like '%XIAM%' or shop like '%Xiaomi - интеграция с RetailCRM%' or shop like '%ru-mi%' then 'xiaomi'
+                    when shop like '%RMIX%' or shop like '%restore-mix%' or shop like '%Restore:mix - интеграция с RetailCRM%' then 'rmix'
+                end as brand
+        FROM dbo_mb.balance_change b
+            WHERE b.name_balance in ('ReStoreBalance', 'RestoreMixBalance', 'SamsungBalance', 'XiaomiBalance')
+            AND b.kind_bonus in ('RetailOrderBonus', 'RetailOrderPayment')
+            and change_datatime < CONVERT(DATE, '24.05.2024')
+            union
+            SELECT DISTINCT 
+                customer_mindbox_id,
+                customer_action_id,
+                ABS(bonus_amount) AS bonus_amount,
+                shop,
+                FORMAT(change_datatime, 'dd.MM.yyyy') as change_datatime,
+                CASE 
+                    WHEN bonus_amount > 0 THEN 1
+                    WHEN bonus_amount < 0 THEN 0
+                END AS nachislenie,
+                CASE when shop like '%RSTR%' or shop like '%Re:Store - интеграция с RetailCRM%' or shop like '%re-store%' then 'reStore'
+                    when shop like '%SMSG%' or shop like '%Samsung - интеграция с RetailCRM%' or shop like '%galaxy%' then 'samsung'
+                    when shop like '%XIAM%' or shop like '%Xiaomi - интеграция с RetailCRM%' or shop like '%ru-mi%' then 'xiaomi'
+                    when shop like '%RMIX%' or shop like '%restore-mix%' or shop like '%Restore:mix - интеграция с RetailCRM%' then 'rmix'
+                end as brand
+        FROM dbo_mb.balance_change b
+            WHERE b.name_balance in ('ElectronicsClubProgramBalance')
+            AND b.kind_bonus in ('RetailOrderBonus', 'RetailOrderPayment')
+            and change_datatime >= CONVERT(DATE, '24.05.2024')
+
+        )
+        SELECT customer_mindbox_id,
+        sum(bonus_amount) as bonuses_spisanie
+        FROM bonuses b
+        where nachislenie = 0 and b.customer_mindbox_id IN ({values})
+        group by customer_mindbox_id
+    batch_size: 1000
+  - name: bonuses_nachislenie
+    calculate_query: |
+      WITH bonuses AS (
+            SELECT DISTINCT 
+                customer_mindbox_id,
+                customer_action_id,
+                ABS(bonus_amount) AS bonus_amount,
+                shop,
+                FORMAT(change_datatime, 'dd.MM.yyyy') as change_datatime,
+                CASE 
+                    WHEN bonus_amount > 0 THEN 1
+                    WHEN bonus_amount < 0 THEN 0
+                END AS nachislenie,
+                CASE when shop like '%RSTR%' or shop like '%Re:Store - интеграция с RetailCRM%' or shop like '%re-store%' then 'reStore'
+                    when shop like '%SMSG%' or shop like '%Samsung - интеграция с RetailCRM%' or shop like '%galaxy%' then 'samsung'
+                    when shop like '%XIAM%' or shop like '%Xiaomi - интеграция с RetailCRM%' or shop like '%ru-mi%' then 'xiaomi'
+                    when shop like '%RMIX%' or shop like '%restore-mix%' or shop like '%Restore:mix - интеграция с RetailCRM%' then 'rmix'
+                end as brand
+        FROM dbo_mb.balance_change b
+            WHERE b.name_balance in ('ReStoreBalance', 'RestoreMixBalance', 'SamsungBalance', 'XiaomiBalance')
+            AND b.kind_bonus in ('RetailOrderBonus', 'RetailOrderPayment')
+            and change_datatime < CONVERT(DATE, '24.05.2024')
+            union
+            SELECT DISTINCT 
+                customer_mindbox_id,
+                customer_action_id,
+                ABS(bonus_amount) AS bonus_amount,
+                shop,
+                FORMAT(change_datatime, 'dd.MM.yyyy') as change_datatime,
+                CASE 
+                    WHEN bonus_amount > 0 THEN 1
+                    WHEN bonus_amount < 0 THEN 0
+                END AS nachislenie,
+                CASE when shop like '%RSTR%' or shop like '%Re:Store - интеграция с RetailCRM%' or shop like '%re-store%' then 'reStore'
+                    when shop like '%SMSG%' or shop like '%Samsung - интеграция с RetailCRM%' or shop like '%galaxy%' then 'samsung'
+                    when shop like '%XIAM%' or shop like '%Xiaomi - интеграция с RetailCRM%' or shop like '%ru-mi%' then 'xiaomi'
+                    when shop like '%RMIX%' or shop like '%restore-mix%' or shop like '%Restore:mix - интеграция с RetailCRM%' then 'rmix'
+                end as brand
+        FROM dbo_mb.balance_change b
+            WHERE b.name_balance in ('ElectronicsClubProgramBalance')
+            AND b.kind_bonus in ('RetailOrderBonus', 'RetailOrderPayment')
+            and change_datatime >= CONVERT(DATE, '24.05.2024')
+
+        )
+        SELECT customer_mindbox_id,
+        sum(bonus_amount) as bonuses_nachislenie
+        FROM bonuses b
+        where nachislenie = 1 and b.customer_mindbox_id IN ({values})
+        group by customer_mindbox_id
+    batch_size: 1000
+  - name: days_since_last_purchase
+    calculate_query: |
+      WITH purchase AS (
+            SELECT DISTINCT
+                customer_mindbox_id,
+                action_mindbox_id,
+                order_mindbox_id,
+                CAST(first_action_datetime AS DATE) AS first_action_datetime,
+                total_price,
+                shop
+            FROM dbo_mb.orders o
+            WHERE brand = 'reStore' 
+                AND NOT EXISTS (
+                    SELECT 1 
+                    FROM dbo_mb.orders_cancelled c 
+                    WHERE c.order_mindbox_id = o.order_mindbox_id
+                )
+                AND NOT EXISTS (
+                    SELECT 1 
+                    FROM dbo_mb.orders_return r 
+                    WHERE r.order_mindbox_id = o.order_mindbox_id
+                )
+        ),
+        last_purchase AS (
+            SELECT 
+                customer_mindbox_id,
+                MAX(first_action_datetime) AS last_purchase_date
+            FROM purchase
+            GROUP BY customer_mindbox_id
+        )
+        SELECT 
+            lp.customer_mindbox_id,
+            DATEDIFF(DAY, lp.last_purchase_date, GETDATE()) AS days_since_last_purchase
+        FROM last_purchase lp
+        where lp.customer_mindbox_id IN ({values})
+    batch_size: 1000
+  - name: days_until_expiry
+    calculate_query: |
+      WITH nearest_expiry AS (
+                SELECT 
+                    customer_mindbox_id,
+                    MIN(before_datetime) AS next_expiry_date
+                FROM dbo_mb.balance_change
+                WHERE before_datetime > GETDATE()
+                and name_balance in ('ElectronicsClubProgramBalance', 'ReStoreBalance', 'RestoreMixBalance', 'SamsungBalance', 'XiaomiBalance')
+                GROUP BY customer_mindbox_id
+            )
+            SELECT 
+                customer_mindbox_id,
+                DATEDIFF(DAY, GETDATE(), next_expiry_date) AS days_until_expiry
+            FROM nearest_expiry
+            WHERE customer_mindbox_id IN ({values})
+    batch_size: 1000
+  - name: bonuses_balance
+    calculate_query: |
+      WITH bonuses AS (
+                SELECT DISTINCT 
+                    customer_mindbox_id,
+                    customer_action_id,
+                    bonus_amount
+            FROM dbo_mb.balance_change b
+                WHERE b.name_balance in ('ElectronicsClubProgramBalance', 'ReStoreBalance', 'RestoreMixBalance', 'SamsungBalance', 'XiaomiBalance')
+            )
+            SELECT 
+                customer_mindbox_id,
+                SUM(bonus_amount) AS bonuses_balance
+            FROM bonuses b
+            WHERE customer_mindbox_id IN ({values})
+            group by customer_mindbox_id
+    batch_size: 1000
+  - name: purchase_frequency_last_year
+    calculate_query: |
+      SELECT 
+                customer_mindbox_id,
+                COUNT(DISTINCT order_mindbox_id) AS purchase_frequency_last_year
+            FROM dbo_mb.orders
+            WHERE 
+                action_datetime BETWEEN DATEADD(YEAR, -1, GETDATE()) AND GETDATE()
+                AND brand = 'reStore'
+                and customer_mindbox_id IN ({values})
+            GROUP BY customer_mindbox_id
+    batch_size: 1000
+  - name: avg_receipt_restore
+    calculate_query: |
+      WITH purchase AS (
+                SELECT DISTINCT
+                       customer_mindbox_id,
+                       action_mindbox_id,
+                       order_mindbox_id,
+                       CAST(first_action_datetime AS DATE) AS first_action_datetime,
+                       total_price,
+                       shop
+                FROM dbo_mb.orders o
+                WHERE brand = 'reStore' 
+                    AND NOT EXISTS (
+                        SELECT 1 
+                        FROM dbo_mb.orders_cancelled c 
+                        WHERE c.order_mindbox_id = o.order_mindbox_id
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 
+                        FROM dbo_mb.orders_return r 
+                        WHERE r.order_mindbox_id = o.order_mindbox_id
+                    )
+            )
+            SELECT 
+                p.customer_mindbox_id,
+                sum(total_price)/COUNT(order_mindbox_id) AS avg_receipt_restore
+            FROM purchase p
+            WHERE p.customer_mindbox_id IN ({values})
+            GROUP BY p.customer_mindbox_id
+    batch_size: 1000
+  - name: days_since_last_redemption
+    calculate_query: |
+      WITH last_redemption AS (
+                SELECT 
+                    customer_mindbox_id,
+                    MAX(change_datatime) AS last_bonus_redemption_date
+                FROM dbo_mb.balance_change
+                WHERE name_balance IN ('ElectronicsClubProgramBalance', 'ReStoreBalance', 'RestoreMixBalance', 'SamsungBalance', 'XiaomiBalance') 
+                    AND kind_bonus = 'RetailOrderBonus' and bonus_amount < 0
+                GROUP BY customer_mindbox_id
+            )
+            SELECT 
+                customer_mindbox_id,
+                DATEDIFF(DAY, last_bonus_redemption_date, GETDATE()) AS days_since_last_redemption
+            FROM last_redemption
+                        WHERE customer_mindbox_id IN ({values})
+    batch_size: 1000
+  - name: bonus_usage_ratio
+    calculate_query: |
+      WITH orders_with_bonuses AS (
+                SELECT DISTINCT 
+                    customer_mindbox_id, 
+                    order_mindbox_id, 
+                    COALESCE(base_price - price, 0) AS bonuses_used
+                FROM dbo_mb.orders
+            )
+            SELECT 
+                customer_mindbox_id,
+                COUNT(CASE WHEN bonuses_used > 0 THEN 1 END) * 1.0 / COUNT(order_mindbox_id) AS bonus_usage_ratio
+            FROM orders_with_bonuses
+            WHERE customer_mindbox_id IN ({values})
+            GROUP BY customer_mindbox_id
+    batch_size: 1000
